@@ -7,7 +7,7 @@ use std::ffi::CStr;
 
 use ash::vk;
 use vk_debug::VulkanDebug;
-use vk_device::{VulkanQueues, VulkanDevice};
+use vk_device::{VulkanQueuesIndices, VulkanDevice};
 use window::TriangleWindow;
 #[derive(thiserror::Error, Debug)]
 pub enum RunError {
@@ -41,7 +41,7 @@ impl TriangleApplication {
         let debug = Self::get_debug(&entry, &instance)?;
         let window = TriangleWindow::new()?;
         let surface_khr = Self::get_surface_khr(&entry, &instance, &window)?;
-        let device = Self::get_device(&instance, &surface_khr)?;
+        let device = Self::get_device(&entry, &instance, surface_khr)?;
 
         Ok(Self {
             entry,

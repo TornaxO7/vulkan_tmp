@@ -1,6 +1,14 @@
-use ash::vk;
+use ash::{extensions::khr::Surface, vk};
 
 use crate::{RunError, TriangleApplication};
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VulkanQueueError {
+    #[error("No present queue")]
+    NoPresentQueue,
+    #[error("No graphics queue")]
+    NoGraphicsQueue,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VulkanQueues {
@@ -8,40 +16,133 @@ pub struct VulkanQueues {
     pub graphic: vk::Queue,
 }
 
+impl VulkanQueues {
+    pub fn new(logical_device: &ash::Device, indices: &VulkanQueuesIndices) -> Self {
+        let present = unsafe { logical_device.get_device_queue(indices.present_family_i, 0) };
+        let graphic = unsafe { logical_device.get_device_queue(indices.graphic_family_i, 0) };
+
+        Self { present, graphic }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VulkanQueuesIndices {
+    pub present_family_i: u32,
+    pub graphic_family_i: u32,
+}
+
+impl VulkanQueuesIndices {
+    pub fn to_device_queue_create_infos(&self) -> Vec<vk::DeviceQueueCreateInfo> {
+        let mut builders = Vec::new();
+
+        let family_indices = [self.present_family_i, self.graphic_family_i];
+        for family_index in family_indices {
+            let builder = vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(family_index)
+                .queue_priorities(&[1.0])
+                .build();
+
+            builders.push(builder);
+        }
+
+        builders
+    }
+}
+
+#[derive(Clone)]
 pub struct VulkanDevice {
     pub phys_device: vk::PhysicalDevice,
-    pub log_device: vk::Device,
+    pub logical_device: ash::Device,
 
+    pub queues_i: VulkanQueuesIndices,
     pub queues: VulkanQueues,
+
+    pub present_modes: Vec<vk::PresentModeKHR>,
+    pub capabilities: vk::SurfaceCapabilitiesKHR,
+    pub formats: Vec<vk::SurfaceFormatKHR>,
 }
 
 impl TriangleApplication {
     pub fn get_device(
+        entry: &ash::Entry,
         instance: &ash::Instance,
-        surface_khr: &vk::SurfaceKHR,
+        surface_khr: vk::SurfaceKHR,
     ) -> Result<VulkanDevice, RunError> {
-        let phys_device = get_phys_device(instance, surface_khr)?;
+        let devices = unsafe { instance.enumerate_physical_devices() }?;
+        let surface = ash::extensions::khr::Surface::new(entry, instance);
 
-        todo!()
+        for device in devices {
+            if let Some(queue_indices) =
+                get_required_queue_indices(instance, &surface, surface_khr, device)?
+            {
+                let present_modes = unsafe {
+                    surface.get_physical_device_surface_present_modes(device, surface_khr)
+                }?;
+                let capabilities = unsafe {
+                    surface.get_physical_device_surface_capabilities(device, surface_khr)
+                }?;
+                let formats =
+                    unsafe { surface.get_physical_device_surface_formats(device, surface_khr) }?;
+
+                let device_queue_create_infos = queue_indices.to_device_queue_create_infos();
+                let create_info =
+                    vk::DeviceCreateInfo::builder().queue_create_infos(&device_queue_create_infos);
+                let logical_device = unsafe { instance.create_device(device, &create_info, None) }?;
+                let queues = VulkanQueues::new(&logical_device, &queue_indices);
+
+                return Ok(VulkanDevice {
+                    phys_device: device,
+                    logical_device,
+
+                    queues_i: queue_indices,
+                    queues,
+
+                    present_modes,
+                    capabilities,
+                    formats,
+                });
+            }
+        }
+
+        Err(RunError::NoSuitableDevice)
     }
 }
 
-fn get_phys_device(
+fn get_required_queue_indices(
     instance: &ash::Instance,
-    surface_khr: &vk::SurfaceKHR,
-) -> Result<vk::PhysicalDevice, RunError> {
-    let devices = unsafe { instance.enumerate_physical_devices() }?;
+    surface: &Surface,
+    surface_khr: vk::SurfaceKHR,
+    phys_device: vk::PhysicalDevice,
+) -> Result<Option<VulkanQueuesIndices>, RunError> {
+    let mut graphic_family_i = None;
+    let mut present_family_i = None;
 
-    for device in devices {
-        if is_device_suitable(instance, surface_khr, device) {
-            return Ok(device);
+    let queue_family_properties =
+        unsafe { instance.get_physical_device_queue_family_properties(phys_device) };
+
+    for (index, properties) in queue_family_properties.iter().enumerate() {
+        if properties.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+            graphic_family_i = Some(index as u32);
+        }
+
+        if unsafe {
+            surface.get_physical_device_surface_support(phys_device, index as u32, surface_khr)
+        }? {
+            present_family_i = Some(index as u32);
+        }
+
+        if graphic_family_i.is_some() && present_family_i.is_some() {
+            break;
         }
     }
 
-    Err(RunError::NoSuitableDevice)
-}
+    let indices = match (present_family_i, graphic_family_i) {
+        (Some(p), Some(g)) => Some(VulkanQueuesIndices {
+            present_family_i: p,
+            graphic_family_i: g,
+        }),
+        _ => None,
+    };
 
-fn is_device_suitable(instance: &ash::Instance, surface_khr: &vk::SurfaceKHR, phys_device: vk::PhysicalDevice) -> bool {
-    let properties = unsafe{instance.get_physical_device_properties(phys_device)};
+    Ok(indices)
 }
