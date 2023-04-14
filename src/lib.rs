@@ -1,9 +1,13 @@
 mod window;
 mod vk_surface;
+mod vk_device;
+mod vk_debug;
 
 use std::ffi::CStr;
 
 use ash::vk;
+use vk_debug::VulkanDebug;
+use vk_device::{VulkanQueues, VulkanDevice};
 use window::TriangleWindow;
 #[derive(thiserror::Error, Debug)]
 pub enum RunError {
@@ -13,15 +17,20 @@ pub enum RunError {
     VkResult(#[from] vk::Result),
     #[error(transparent)]
     WinitOsError(#[from] winit::error::OsError),
+    #[error("Couldn't find a suitable device.")]
+    NoSuitableDevice,
 }
 
 struct TriangleApplication {
     entry: ash::Entry,
     instance: ash::Instance,
+    debug: VulkanDebug,
 
     window: TriangleWindow,
 
     surface_khr: vk::SurfaceKHR,
+
+    device: VulkanDevice,
 }
 
 impl TriangleApplication {
@@ -29,15 +38,19 @@ impl TriangleApplication {
         let entry = unsafe{ash::Entry::load()}?;
         let instance = Self::get_instance(&entry)?;
 
+        let debug = Self::get_debug(&entry, &instance)?;
         let window = TriangleWindow::new()?;
         let surface_khr = Self::get_surface_khr(&entry, &instance, &window)?;
+        let device = Self::get_device(&instance, &surface_khr)?;
 
         Ok(Self {
             entry,
             instance,
+            debug,
             window,
 
             surface_khr,
+            device,
         })
     }
 
