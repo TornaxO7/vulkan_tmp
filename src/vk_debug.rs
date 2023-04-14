@@ -1,3 +1,5 @@
+use std::ffi::{c_void, CStr};
+
 use crate::{RunError, TriangleApplication};
 use ash::{
     extensions::ext::DebugUtils,
@@ -27,6 +29,7 @@ impl TriangleApplication {
             vk::DebugUtilsMessengerCreateInfoEXT::builder()
                 .message_severity(severity)
                 .message_type(message_type)
+                .pfn_user_callback(Some(simp))
         };
 
         let messenger = unsafe { utils.create_debug_utils_messenger(&create_info, None) }?;
@@ -36,7 +39,20 @@ impl TriangleApplication {
 
     pub fn destroy_debug(&mut self) {
         unsafe {
-            self.debug.utils.destroy_debug_utils_messenger(self.debug.messenger, None);
+            self.debug
+                .utils
+                .destroy_debug_utils_messenger(self.debug.messenger, None);
         }
     }
+}
+
+unsafe extern "system" fn simp(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_types: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _p_user_data: *mut c_void,
+) -> vk::Bool32 {
+    let message = CStr::from_ptr((*p_callback_data).p_message);
+    println!("[{:?}][{:?}]: {:?}", message_severity, message_types, message);
+    vk::FALSE
 }

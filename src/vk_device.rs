@@ -1,14 +1,7 @@
-use ash::{extensions::khr::Surface, vk};
+use std::{hash::Hash, collections::HashSet};
 
-use crate::{RunError, TriangleApplication};
-
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, Hash)]
-pub enum VulkanQueueError {
-    #[error("No present queue")]
-    NoPresentQueue,
-    #[error("No graphics queue")]
-    NoGraphicsQueue,
-}
+use ash::vk;
+use crate::{RunError, TriangleApplication, vk_surface::VulkanSurface};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VulkanQueues {
@@ -35,7 +28,7 @@ impl VulkanQueuesIndices {
     pub fn to_device_queue_create_infos(&self) -> Vec<vk::DeviceQueueCreateInfo> {
         let mut builders = Vec::new();
 
-        let family_indices = [self.present_family_i, self.graphic_family_i];
+        let family_indices = HashSet::from([self.present_family_i, self.graphic_family_i]);
         for family_index in family_indices {
             let builder = vk::DeviceQueueCreateInfo::builder()
                 .queue_family_index(family_index)
@@ -64,25 +57,23 @@ pub struct VulkanDevice {
 
 impl TriangleApplication {
     pub fn get_device(
-        entry: &ash::Entry,
         instance: &ash::Instance,
-        surface_khr: vk::SurfaceKHR,
+        surface: &VulkanSurface,
     ) -> Result<VulkanDevice, RunError> {
         let devices = unsafe { instance.enumerate_physical_devices() }?;
-        let surface = ash::extensions::khr::Surface::new(entry, instance);
 
         for device in devices {
             if let Some(queue_indices) =
-                get_required_queue_indices(instance, &surface, surface_khr, device)?
+                get_required_queue_indices(instance, &surface, device)?
             {
                 let present_modes = unsafe {
-                    surface.get_physical_device_surface_present_modes(device, surface_khr)
+                    surface.surface.get_physical_device_surface_present_modes(device, surface.surface_khr)
                 }?;
                 let capabilities = unsafe {
-                    surface.get_physical_device_surface_capabilities(device, surface_khr)
+                    surface.surface.get_physical_device_surface_capabilities(device, surface.surface_khr)
                 }?;
                 let formats =
-                    unsafe { surface.get_physical_device_surface_formats(device, surface_khr) }?;
+                    unsafe { surface.surface.get_physical_device_surface_formats(device, surface.surface_khr) }?;
 
                 let device_queue_create_infos = queue_indices.to_device_queue_create_infos();
                 let create_info =
@@ -106,12 +97,17 @@ impl TriangleApplication {
 
         Err(RunError::NoSuitableDevice)
     }
+
+    pub fn destroy_device(&mut self) {
+        unsafe {
+            self.device.logical_device.destroy_device(None);
+        }
+    }
 }
 
 fn get_required_queue_indices(
     instance: &ash::Instance,
-    surface: &Surface,
-    surface_khr: vk::SurfaceKHR,
+    surface: &VulkanSurface,
     phys_device: vk::PhysicalDevice,
 ) -> Result<Option<VulkanQueuesIndices>, RunError> {
     let mut graphic_family_i = None;
@@ -126,7 +122,7 @@ fn get_required_queue_indices(
         }
 
         if unsafe {
-            surface.get_physical_device_surface_support(phys_device, index as u32, surface_khr)
+            surface.surface.get_physical_device_surface_support(phys_device, index as u32, surface.surface_khr)
         }? {
             present_family_i = Some(index as u32);
         }

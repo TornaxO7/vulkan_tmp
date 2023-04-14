@@ -8,6 +8,7 @@ use std::ffi::CStr;
 use ash::vk;
 use vk_debug::VulkanDebug;
 use vk_device::{VulkanQueuesIndices, VulkanDevice};
+use vk_surface::VulkanSurface;
 use window::TriangleWindow;
 #[derive(thiserror::Error, Debug)]
 pub enum RunError {
@@ -28,8 +29,7 @@ struct TriangleApplication {
 
     window: TriangleWindow,
 
-    surface_khr: vk::SurfaceKHR,
-
+    surface: VulkanSurface,
     device: VulkanDevice,
 }
 
@@ -40,8 +40,8 @@ impl TriangleApplication {
 
         let debug = Self::get_debug(&entry, &instance)?;
         let window = TriangleWindow::new()?;
-        let surface_khr = Self::get_surface_khr(&entry, &instance, &window)?;
-        let device = Self::get_device(&entry, &instance, surface_khr)?;
+        let surface = Self::get_surface(&entry, &instance, &window)?;
+        let device = Self::get_device(&instance, &surface)?;
 
         Ok(Self {
             entry,
@@ -49,7 +49,7 @@ impl TriangleApplication {
             debug,
             window,
 
-            surface_khr,
+            surface,
             device,
         })
     }
@@ -65,7 +65,7 @@ impl TriangleApplication {
             .api_version(vk::API_VERSION_1_3);
 
         let enabled_layer_names: &[*const i8] = &[
-            "VK_LAYER_KHRONOS_validation".as_ptr() as *const i8,
+            CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap().as_ptr(),
         ];
 
         let enabled_extension_names = [
@@ -87,6 +87,9 @@ impl TriangleApplication {
 impl Drop for TriangleApplication {
     fn drop(&mut self) {
         unsafe {
+            self.destroy_surface();
+            self.destroy_device();
+            self.destroy_debug();
             self.instance.destroy_instance(None);
         }
     }
@@ -94,6 +97,6 @@ impl Drop for TriangleApplication {
 
 pub fn run() -> Result<(), RunError> {
     let mut yes = TriangleApplication::new()?;
-    yes.run();
+    // yes.run();
     Ok(())
 }
