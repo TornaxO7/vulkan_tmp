@@ -3,12 +3,14 @@ mod vk_surface;
 mod vk_device;
 mod vk_debug;
 mod vk_swapchain;
+mod vk_pipeline;
 
 use std::ffi::CStr;
 
 use ash::vk;
 use vk_debug::VulkanDebug;
 use vk_device::{VulkanQueuesIndices, VulkanDevice};
+use vk_pipeline::VulkanPipeline;
 use vk_surface::VulkanSurface;
 use vk_swapchain::VulkanSwapchain;
 use window::TriangleWindow;
@@ -34,6 +36,7 @@ struct TriangleApplication {
     surface: VulkanSurface,
     device: VulkanDevice,
     swapchain: VulkanSwapchain,
+    pipeline: VulkanPipeline,
 }
 
 impl TriangleApplication {
@@ -46,6 +49,7 @@ impl TriangleApplication {
         let surface = Self::get_surface(&entry, &instance, &window)?;
         let device = Self::get_device(&instance, &surface)?;
         let swapchain = Self::get_swapchain(&instance, &device, &surface, &window.window)?;
+        let pipeline = Self::get_pipeline(&device, &swapchain)?;
 
         Ok(Self {
             entry,
@@ -56,6 +60,7 @@ impl TriangleApplication {
             surface,
             device,
             swapchain,
+            pipeline,
         })
     }
 

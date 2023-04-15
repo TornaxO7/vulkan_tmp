@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 ash = "0.37.2"
 thiserror = "1.0.40"
+vk-shader-macros = "0.2.8"
 winit = "0.28.3"
