@@ -9,6 +9,11 @@ use crate::{vk_device::VulkanDevice, vk_surface::VulkanSurface, RunError, Triang
 pub struct VulkanSwapchain {
     pub swapchain_utils: Swapchain,
     pub swapchain: SwapchainKHR,
+
+    pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
+    pub extent: vk::Extent2D,
+    pub format: vk::Format,
 }
 
 impl TriangleApplication {
@@ -58,15 +63,28 @@ impl TriangleApplication {
         let swapchain_utils = Swapchain::new(instance, &device.logical_device);
         let swapchain = unsafe { swapchain_utils.create_swapchain(&create_info, None) }?;
 
+        let images = unsafe { swapchain_utils.get_swapchain_images(swapchain) }?;
+        let image_views = Self::create_image_views(device, &images, &format.format)?;
+
         Ok(VulkanSwapchain {
             swapchain_utils,
             swapchain,
+            images,
+            image_views,
+            extent,
+            format: format.format,
         })
     }
 
     pub fn destroy_swapchain(&mut self) {
         unsafe {
-            self.swapchain.swapchain_utils.destroy_swapchain(self.swapchain.swapchain, None);
+            for image_view in self.swapchain.image_views.iter() {
+                self.device.logical_device.destroy_image_view(*image_view, None);
+            }
+
+            self.swapchain
+                .swapchain_utils
+                .destroy_swapchain(self.swapchain.swapchain, None);
         }
     }
 
@@ -109,5 +127,40 @@ impl TriangleApplication {
 
             extent
         }
+    }
+
+    fn create_image_views(
+        device: &VulkanDevice,
+        images: &Vec<vk::Image>,
+        format: &vk::Format,
+    ) -> Result<Vec<vk::ImageView>, RunError> {
+        let mut image_views = Vec::with_capacity(images.len());
+
+        for image in images {
+            let create_info = vk::ImageViewCreateInfo::builder()
+                .image(*image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(*format)
+                .components(vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::IDENTITY,
+                    g: vk::ComponentSwizzle::IDENTITY,
+                    b: vk::ComponentSwizzle::IDENTITY,
+                    a: vk::ComponentSwizzle::IDENTITY,
+                })
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+
+            let image_view =
+                unsafe { device.logical_device.create_image_view(&create_info, None) }?;
+
+            image_views.push(image_view);
+        }
+
+        Ok(image_views)
     }
 }
