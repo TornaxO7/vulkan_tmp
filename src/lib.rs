@@ -2,6 +2,7 @@ mod window;
 mod vk_surface;
 mod vk_device;
 mod vk_debug;
+mod vk_swapchain;
 
 use std::ffi::CStr;
 
@@ -9,6 +10,7 @@ use ash::vk;
 use vk_debug::VulkanDebug;
 use vk_device::{VulkanQueuesIndices, VulkanDevice};
 use vk_surface::VulkanSurface;
+use vk_swapchain::VulkanSwapchain;
 use window::TriangleWindow;
 #[derive(thiserror::Error, Debug)]
 pub enum RunError {
@@ -31,6 +33,7 @@ struct TriangleApplication {
 
     surface: VulkanSurface,
     device: VulkanDevice,
+    swapchain: VulkanSwapchain,
 }
 
 impl TriangleApplication {
@@ -42,6 +45,7 @@ impl TriangleApplication {
         let window = TriangleWindow::new()?;
         let surface = Self::get_surface(&entry, &instance, &window)?;
         let device = Self::get_device(&instance, &surface)?;
+        let swapchain = Self::get_swapchain(&instance, &device, &surface, &window.window)?;
 
         Ok(Self {
             entry,
@@ -51,6 +55,7 @@ impl TriangleApplication {
 
             surface,
             device,
+            swapchain,
         })
     }
 
@@ -87,6 +92,7 @@ impl TriangleApplication {
 impl Drop for TriangleApplication {
     fn drop(&mut self) {
         unsafe {
+            self.destroy_swapchain();
             self.destroy_surface();
             self.destroy_device();
             self.destroy_debug();

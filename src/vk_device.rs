@@ -1,7 +1,12 @@
-use std::{hash::Hash, collections::HashSet};
+use std::{
+    collections::HashSet,
+    ffi::{CStr, CString},
+    hash::Hash,
+    os::raw::c_char,
+};
 
+use crate::{vk_surface::VulkanSurface, RunError, TriangleApplication};
 use ash::vk;
-use crate::{RunError, TriangleApplication, vk_surface::VulkanSurface};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VulkanQueues {
@@ -56,6 +61,8 @@ pub struct VulkanDevice {
 }
 
 impl TriangleApplication {
+    const DEVICE_EXTENSIONS: [&'static CStr; 1] = [ash::extensions::khr::Swapchain::name()];
+
     pub fn get_device(
         instance: &ash::Instance,
         surface: &VulkanSurface,
@@ -63,36 +70,50 @@ impl TriangleApplication {
         let devices = unsafe { instance.enumerate_physical_devices() }?;
 
         for device in devices {
-            if let Some(queue_indices) =
-                get_required_queue_indices(instance, &surface, device)?
-            {
-                let present_modes = unsafe {
-                    surface.surface.get_physical_device_surface_present_modes(device, surface.surface_khr)
-                }?;
-                let capabilities = unsafe {
-                    surface.surface.get_physical_device_surface_capabilities(device, surface.surface_khr)
-                }?;
-                let formats =
-                    unsafe { surface.surface.get_physical_device_surface_formats(device, surface.surface_khr) }?;
-
-                let device_queue_create_infos = queue_indices.to_device_queue_create_infos();
-                let create_info =
-                    vk::DeviceCreateInfo::builder().queue_create_infos(&device_queue_create_infos);
-                let logical_device = unsafe { instance.create_device(device, &create_info, None) }?;
-                let queues = VulkanQueues::new(&logical_device, &queue_indices);
-
-                return Ok(VulkanDevice {
-                    phys_device: device,
-                    logical_device,
-
-                    queues_i: queue_indices,
-                    queues,
-
-                    present_modes,
-                    capabilities,
-                    formats,
-                });
+            if !Self::is_device_suitable(instance, &surface, device)? {
+                continue;
             }
+
+            let queue_indices = get_required_queue_indices(instance, &surface, device)?.unwrap();
+
+            let present_modes = unsafe {
+                surface
+                    .surface
+                    .get_physical_device_surface_present_modes(device, surface.surface_khr)
+            }?;
+            let capabilities = unsafe {
+                surface
+                    .surface
+                    .get_physical_device_surface_capabilities(device, surface.surface_khr)
+            }?;
+            let formats = unsafe {
+                surface
+                    .surface
+                    .get_physical_device_surface_formats(device, surface.surface_khr)
+            }?;
+
+            let device_queue_create_infos = queue_indices.to_device_queue_create_infos();
+            let device_extensions: Vec<*const i8> = Self::DEVICE_EXTENSIONS
+                .into_iter()
+                .map(|extension| extension.as_ptr())
+                .collect();
+            let create_info = vk::DeviceCreateInfo::builder()
+                .queue_create_infos(&device_queue_create_infos)
+                .enabled_extension_names(&device_extensions);
+            let logical_device = unsafe { instance.create_device(device, &create_info, None) }?;
+            let queues = VulkanQueues::new(&logical_device, &queue_indices);
+
+            return Ok(VulkanDevice {
+                phys_device: device,
+                logical_device,
+
+                queues_i: queue_indices,
+                queues,
+
+                present_modes,
+                capabilities,
+                formats,
+            });
         }
 
         Err(RunError::NoSuitableDevice)
@@ -102,6 +123,38 @@ impl TriangleApplication {
         unsafe {
             self.device.logical_device.destroy_device(None);
         }
+    }
+
+    fn is_device_suitable(
+        instance: &ash::Instance,
+        surface: &VulkanSurface,
+        phys_device: vk::PhysicalDevice,
+    ) -> Result<bool, RunError> {
+        let has_required_queues =
+            get_required_queue_indices(instance, surface, phys_device)?.is_some();
+        let supports_required_extensions =
+            Self::device_supports_required_extensions(instance, phys_device)?;
+
+        Ok(has_required_queues && supports_required_extensions)
+    }
+
+    fn device_supports_required_extensions(
+        instance: &ash::Instance,
+        device: vk::PhysicalDevice,
+    ) -> Result<bool, RunError> {
+        let supported_device_extensions = {
+            let supported_device_extensions =
+                unsafe { instance.enumerate_device_extension_properties(device) }?;
+
+            supported_device_extensions
+                .iter()
+                .map(|entry| unsafe { CStr::from_ptr(entry.extension_name.as_ptr()) })
+                .collect()
+        };
+
+        let required_device_extensions = HashSet::from(Self::DEVICE_EXTENSIONS);
+
+        Ok(required_device_extensions.is_subset(&supported_device_extensions))
     }
 }
 
@@ -122,7 +175,11 @@ fn get_required_queue_indices(
         }
 
         if unsafe {
-            surface.surface.get_physical_device_surface_support(phys_device, index as u32, surface.surface_khr)
+            surface.surface.get_physical_device_surface_support(
+                phys_device,
+                index as u32,
+                surface.surface_khr,
+            )
         }? {
             present_family_i = Some(index as u32);
         }
