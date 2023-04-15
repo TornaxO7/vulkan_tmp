@@ -4,6 +4,7 @@ mod vk_device;
 mod vk_debug;
 mod vk_swapchain;
 mod vk_pipeline;
+mod vk_rendererpass;
 
 use std::ffi::CStr;
 
@@ -11,6 +12,7 @@ use ash::vk;
 use vk_debug::VulkanDebug;
 use vk_device::{VulkanQueuesIndices, VulkanDevice};
 use vk_pipeline::VulkanPipeline;
+use vk_rendererpass::VulkanRendererPass;
 use vk_surface::VulkanSurface;
 use vk_swapchain::VulkanSwapchain;
 use window::TriangleWindow;
@@ -37,6 +39,7 @@ struct TriangleApplication {
     device: VulkanDevice,
     swapchain: VulkanSwapchain,
     pipeline: VulkanPipeline,
+    renderer_pass: VulkanRendererPass,
 }
 
 impl TriangleApplication {
@@ -49,7 +52,8 @@ impl TriangleApplication {
         let surface = Self::get_surface(&entry, &instance, &window)?;
         let device = Self::get_device(&instance, &surface)?;
         let swapchain = Self::get_swapchain(&instance, &device, &surface, &window.window)?;
-        let pipeline = Self::get_pipeline(&device, &swapchain)?;
+        let renderer_pass = Self::get_rendererpass(&device, &swapchain)?;
+        let pipeline = Self::get_pipeline(&device, &swapchain, &renderer_pass)?;
 
         Ok(Self {
             entry,
@@ -61,6 +65,7 @@ impl TriangleApplication {
             device,
             swapchain,
             pipeline,
+            renderer_pass,
         })
     }
 
@@ -97,6 +102,8 @@ impl TriangleApplication {
 impl Drop for TriangleApplication {
     fn drop(&mut self) {
         unsafe {
+            self.destroy_pipeline();
+            self.destroy_renderpass();
             self.destroy_swapchain();
             self.destroy_surface();
             self.destroy_device();
