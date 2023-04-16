@@ -1,6 +1,6 @@
-use crate::{TriangleApplication, RunError, window::TriangleWindow};
+use crate::{TriangleApplication, RunError};
 use ash::vk;
-use winit::platform::x11::WindowExtX11;
+use winit::{platform::x11::WindowExtX11, window::Window};
 
 pub struct VulkanSurface {
     pub surface_khr: vk::SurfaceKHR,
@@ -8,10 +8,10 @@ pub struct VulkanSurface {
 }
 
 impl TriangleApplication {
-    pub fn get_surface(entry: &ash::Entry, instance: &ash::Instance, window: &TriangleWindow) -> Result<VulkanSurface, RunError> {
+    pub fn get_surface(entry: &ash::Entry, instance: &ash::Instance, window: &Window) -> Result<VulkanSurface, RunError> {
 
-        let xlib_window = window.window.xlib_window().unwrap();
-        let xlib_display = window.window.xlib_display().unwrap();
+        let xlib_window = window.xlib_window().unwrap();
+        let xlib_display = window.xlib_display().unwrap();
 
         let create_info = vk::XlibSurfaceCreateInfoKHR::builder()
             .window(xlib_window)

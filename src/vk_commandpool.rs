@@ -9,7 +9,7 @@ pub struct VulkanCommands {
 }
 
 impl TriangleApplication {
-    pub fn get_commandpool(device: &VulkanDevice, renderpass: &VulkanRendererPass) -> Result<VulkanCommands, RunError> {
+    pub fn get_commandpool(device: &VulkanDevice) -> Result<VulkanCommands, RunError> {
         let pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(device.queues_i.graphic_family_i);
@@ -18,7 +18,8 @@ impl TriangleApplication {
 
         let buffer_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY);
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
         let buffers = unsafe { device.logical_device.allocate_command_buffers(&buffer_info) }?;
 
         Ok(VulkanCommands { pool, buffers })

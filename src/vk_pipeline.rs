@@ -95,6 +95,10 @@ impl TriangleApplication {
             .logic_op(vk::LogicOp::COPY)
             .attachments(&color_blend_attachments);
 
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
+            .dynamic_states(&dynamic_states);
+
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder();
         let pipeline_layout = unsafe {
             device
@@ -111,7 +115,8 @@ impl TriangleApplication {
             .color_blend_state(&color_blending)
             .layout(pipeline_layout)
             .render_pass(renderpass.renderpass)
-            .subpass(0);
+            .subpass(0)
+            .dynamic_state(&dynamic_state);
 
         let pipelines = unsafe {
             device.logical_device.create_graphics_pipelines(

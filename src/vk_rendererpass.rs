@@ -37,9 +37,20 @@ impl TriangleApplication {
             .color_attachments(&color_attachments_references);
         let subpasses = [*subpass];
 
+        let subpass_dependency = vk::SubpassDependency::builder()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::NONE)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .build();
+        let dependencies = [subpass_dependency];
+
         let create_info = vk::RenderPassCreateInfo::builder()
             .attachments(&color_attachments)
-            .subpasses(&subpasses);
+            .subpasses(&subpasses)
+            .dependencies(&dependencies);
 
         let renderpass = unsafe { device.logical_device.create_render_pass(&create_info, None) }?;
 
