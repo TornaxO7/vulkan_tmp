@@ -14,7 +14,7 @@ impl Vulkan {
             .api_version(vk::API_VERSION_1_3);
 
         let enabled_layer_names = [
-            "VK_LAYER_KHRONOS_validation".as_ptr() as *const i8,
+            CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap().as_ptr(),
         ];
 
         let enabled_extension_names = [
@@ -31,5 +31,11 @@ impl Vulkan {
         let instance = unsafe { entry.create_instance(&instance_create_info, None) }?;
 
         Ok(instance)
+    }
+
+    pub fn destroy_instance(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
     }
 }
